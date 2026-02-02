@@ -1,2 +1,6 @@
 openai
 pymupdf
+python-dotenv
+paddleocr
+pillow
+numpy
