@@ -1,0 +1,8 @@
+openai
+pymupdf
+python-dotenv
+paddleocr
+pillow
+numpy
+PyMuPDF
+paddlepaddle -i https://www.paddlepaddle.org.cn/packages/stable/cpu/

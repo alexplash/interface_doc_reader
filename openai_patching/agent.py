@@ -1,17 +1,15 @@
-from __future__ import annotations
 
+from __future__ import annotations
 import base64
 import json
 import os
 import re
 from dataclasses import dataclass
 from typing import Dict, Optional
-
 from dotenv import load_dotenv
 import fitz  # PyMuPDF
 from openai import OpenAI
-
-from document_labeler import DocumentLabelerAgent
+from document_labeler import DocumentLabeler
 
 load_dotenv()
 
@@ -24,7 +22,7 @@ if __name__ == "__main__":
         print("Okay — exiting without labeling.")
         raise SystemExit(0)
 
-    document_labeler = DocumentLabelerAgent()
+    document_labeler = DocumentLabeler()
     try:
         document_labeler.run()
     finally:
