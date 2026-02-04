@@ -21,7 +21,7 @@ class DocumentRanker:
         embed_threshold: float = 0.70,
     ):
         self.metadata = metadata
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY") or os.getenv("KEY"))
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = model
         self.max_items_per_field = int(max_items_per_field)
 

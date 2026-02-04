@@ -20,7 +20,7 @@ class Agent:
         self.ranker = DocumentRanker(self.metadata)
         self.state = EventState()
 
-        self.client = OpenAI(api_key=os.getenv("KEY") or os.getenv("OPENAI_API_KEY"))
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.model = "gpt-5"
 
         self.system = (
