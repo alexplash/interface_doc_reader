@@ -20,17 +20,9 @@ from paddleocr import PaddleOCR
 load_dotenv()
 
 
-# -----------------------------
-# Utilities
-# -----------------------------
-
-def safe_filename(name: str, max_len: int = 200) -> str:
-    """
-    Sanitize a string so it's safe-ish to store/use (NOT used for filenames anymore).
-    Numbers are preserved.
-    """
+def norm_str(name: str, max_len: int = 200) -> str:
     name = (name or "").strip()
-    name = re.sub(r"[\x00-\x1F]+", " ", name)  # remove control chars
+    name = re.sub(r"[\x00-\x1F]+", " ", name)
     name = re.sub(r"\s+", " ", name).strip()
     if len(name) > max_len:
         name = name[:max_len].rstrip()
@@ -38,9 +30,6 @@ def safe_filename(name: str, max_len: int = 200) -> str:
 
 
 def extract_first_json_object_from_model(text: str) -> Optional[dict]:
-    """
-    Try to find and parse the first JSON object in a model response.
-    """
     if not text:
         return None
 
@@ -69,11 +58,11 @@ class DocumentLabeler:
     out_dir: str = "labeled_files"
     metadata_filename: str = "metadata.json"
 
-    model: str = "gpt-4.1-mini"  # vision-capable model
+    model: str = "gpt-4.1-mini"
     dpi: int = 200
-    title_band_ratio: float = 0.22  # top ~22% of page
+    title_band_ratio: float = 0.22
 
-    def __post_init__(self) -> None:
+    def __init__(self) -> None:
         if not os.path.exists(self.pdf_path):
             raise FileNotFoundError(f"Could not find PDF: {self.pdf_path}")
 
@@ -82,10 +71,8 @@ class DocumentLabeler:
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         self.doc = fitz.open(self.pdf_path)
 
-        # OCR engine (init once)
         self.ocr = PaddleOCR(use_angle_cls=True, lang="en")
 
-        # Holds mapping "0001" -> {"titles": [...], ...}
         self.metadata: Dict[str, Dict[str, Any]] = {}
 
     def close(self) -> None:
@@ -95,13 +82,9 @@ class DocumentLabeler:
             pass
 
     def page_id(self, page_index: int) -> str:
-        # page_index is 0-based; id is 1-based with zero-padding
         return f"{page_index + 1:04d}"
 
     def render_title_band_png_bytes(self, page_index: int) -> bytes:
-        """
-        Render just the top band of the page at requested DPI.
-        """
         page = self.doc[page_index]
         rect = page.rect
         band_h = rect.height * float(self.title_band_ratio)
@@ -111,10 +94,6 @@ class DocumentLabeler:
         return pix.tobytes("png")
 
     def ask_model_for_titles(self, png_bytes: bytes) -> List[str]:
-        """
-        Return ALL titles found in the header band.
-        Expected output JSON: {"titles": ["...", "..."]}.
-        """
         b64 = base64.b64encode(png_bytes).decode("utf-8")
         data_url = f"data:image/png;base64,{b64}"
 
@@ -148,29 +127,24 @@ class DocumentLabeler:
         raw = (resp.output_text or "").strip()
         obj = extract_first_json_object_from_model(raw)
 
-        # Fallback: treat output as a single title if JSON failed
         if not obj or "titles" not in obj:
-            maybe = safe_filename(raw)
+            maybe = norm_str(raw)
             return [maybe] if maybe else []
 
         titles = obj.get("titles", [])
         if not isinstance(titles, list):
             return []
 
-        # Clean titles (keep numbers; just normalize whitespace/control chars)
         cleaned: List[str] = []
         for t in titles:
             if isinstance(t, str):
-                s = safe_filename(t)
+                s = norm_str(t)
                 if s:
                     cleaned.append(s)
 
         return cleaned
 
     def save_single_page_pdf_numeric(self, page_index: int) -> str:
-        """
-        Save just one page into a new PDF named 0001.pdf, 0002.pdf, ...
-        """
         page_id = self.page_id(page_index)
         out_path = os.path.join(self.out_dir, f"{page_id}.pdf")
 
@@ -188,13 +162,8 @@ class DocumentLabeler:
         return path
     
     def clear_out_dir(self) -> None:
-        """
-        Delete all contents of self.out_dir (files + subfolders), but keep the directory itself.
-        Includes a couple sanity checks to reduce foot-guns.
-        """
         out_path = Path(self.out_dir).resolve()
 
-        # Basic safety checks
         if str(out_path) in ("/", ""):
             raise ValueError(f"Refusing to clear dangerous out_dir: {out_path}")
 
@@ -209,27 +178,9 @@ class DocumentLabeler:
             except Exception as e:
                 raise RuntimeError(f"Failed clearing {child}: {e}") from e
     
-    def extract_pdf_text_items(self, page_index: int) -> List[Dict[str, Any]]:
-        """
-        Extract *all* text spans from the PDF text layer with bounding boxes.
-        This is Tier-1: no classification yet, just capture everything reliably.
-
-        Returns:
-            [
-            {
-                "raw": "F-715A",
-                "text": "F-715A",
-                "bbox": [x0, y0, x1, y1],
-                "font_size": 7.5,
-                "font": "Helvetica",
-                "flags": 4
-            },
-            ...
-            ]
-        """
+    def extract_pdf_text_items(self, page_index: int) -> List[str]:
         page = self.doc[page_index]
 
-        # "dict" preserves coordinates and span-level granularity
         data = page.get_text("dict")
 
         items = set()
@@ -237,7 +188,6 @@ class DocumentLabeler:
         blocks = data.get("blocks", [])
         for b in blocks:
             if b.get("type") != 0:
-                # type 0 = text; other types can be images/graphics
                 continue
 
             for line in b.get("lines", []):
@@ -246,8 +196,7 @@ class DocumentLabeler:
                     if not raw:
                         continue
 
-                    # Normalize whitespace/control chars but keep content (numbers etc.)
-                    cleaned = safe_filename(raw)
+                    cleaned = norm_str(raw)
                     if not cleaned:
                         continue
 
@@ -261,55 +210,54 @@ class DocumentLabeler:
     
     def render_full_page_png_bytes(self, page_index: int, max_side_px: int = 3800) -> bytes:
         page = self.doc[page_index]
-        rect = page.rect  # points; 72 points = 1 inch
+        rect = page.rect
 
         max_side_points = max(rect.width, rect.height)
         dpi = int(max_side_px * 72 / max_side_points)
-        dpi = max(120, min(400, dpi))  # clamp to sane range
+        dpi = max(120, min(400, dpi))  
 
         pix = page.get_pixmap(dpi=dpi)
         return pix.tobytes("png")
 
-    def norm_text(s: str) -> str:
-        s = (s or "").strip()
-        s = re.sub(r"\s+", " ", s)
-        return s
 
-    def ocr_png_bytes(self, png_bytes: bytes) -> List[Dict[str, Any]]:
+    def ocr_png_bytes(self, png_bytes: bytes) -> List[str]:
         img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
         arr = np.array(img)
 
         result = self.ocr.ocr(arr)
-        d = result[0]
-        texts = d.get("rec_texts", []) or []
-        scores = d.get("rec_scores", []) or []
-        polys = d.get("rec_polys") or d.get("dt_polys") or []
 
-        items = set()
-
-        for poly, text, score in zip(polys, texts, scores):
-            text_clean = safe_filename(text)
-            if not text_clean:
-                continue
-
-            # poly is often a numpy array shape (4,2)
-            if hasattr(poly, "tolist"):
-                poly = poly.tolist()
-
-            # poly: [[x,y],[x,y],[x,y],[x,y]] (or more points)
-            xs = [p[0] for p in poly]
-            ys = [p[1] for p in poly]
-            bbox = [float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))]
-
-            conf_score = float(score) if score is not None else None
-            if conf_score is not None:
-                if len(text_clean) <= 2 and conf_score < 0.9:
+        items: List[Dict[str, Any]] = []
+        if isinstance(result, list) and len(result) == 1 and isinstance(result[0], list):
+            for line in result[0]:
+                if not (isinstance(line, (list, tuple)) and len(line) >= 2):
                     continue
-                if conf_score < 0.8:
-                    continue
+                box = line[0]
+                rec = line[1]
+
+                if isinstance(rec, (list, tuple)) and len(rec) >= 2:
+                    text, conf = rec[0], rec[1]
                 else:
-                    norm_item = self.norm_text(text_clean)
-                    items.add(norm_item)
+                    continue
+
+                text_clean = norm_str(text)
+                if not text_clean:
+                    continue
+
+                if hasattr(box, "tolist"):
+                    box = box.tolist()
+
+                xs = [p[0] for p in box]
+                ys = [p[1] for p in box]
+                bbox = [float(min(xs)), float(min(ys)), float(max(xs)), float(max(ys))]
+
+                conf_score = float(conf) if conf is not None else None
+                if conf_score is not None:
+                    if len(text_clean) <= 2 and conf_score < 0.9:
+                        continue
+                    if conf_score < 0.8:
+                        continue
+                    else:
+                        items.add(text_clean)
 
         return list(items)
 
@@ -333,7 +281,6 @@ class DocumentLabeler:
             ocr_error: Optional[str] = None
             save_error: Optional[str] = None
 
-            # ---- Titles (OpenAI vision) ----
             try:
                 png_bytes = self.render_title_band_png_bytes(i)
                 titles = self.ask_model_for_titles(png_bytes)
@@ -341,14 +288,12 @@ class DocumentLabeler:
                 title_error = str(e)
                 print(f"TITLE ERROR: {title_error}")
 
-            # ---- Text Items (PDF text layer) ----
             try:
                 text_items = self.extract_pdf_text_items(i)
             except Exception as e:
                 text_items_error = str(e)
                 print(f"TEXT ITEMS ERROR: {text_items_error}")
                 
-            # ---- OCR (always) ----
             try:
                 full_png = self.render_full_page_png_bytes(i)
                 ocr_items = self.ocr_png_bytes(full_png)
@@ -356,14 +301,12 @@ class DocumentLabeler:
                 ocr_error = str(e)
                 print(f"OCR ERROR: {ocr_error}")   
                 
-            # ---- Always try saving the single-page PDF ----
             pdf_path = ""
             try:
                 pdf_path = self.save_single_page_pdf_numeric(i)
             except Exception as e:
                 save_error = str(e)
 
-            # Store metadata (always)
             record: Dict[str, Any] = {
                 "titles": titles,
                 "text_items": text_items,
@@ -388,7 +331,6 @@ class DocumentLabeler:
 
             self.metadata[page_id] = record
 
-            # Logging
             status_parts = []
             status_parts.append("titles=OK" if not title_error else "titles=ERR")
             status_parts.append("text_items=OK" if not text_items_error else "items=ERR")
@@ -403,4 +345,14 @@ class DocumentLabeler:
 
         meta_path = self.write_metadata_json()
         print(f"[DONE] Wrote metadata: {meta_path}")
+        
+
+if __name__ == "__main__":
+    
+    document_labeler = DocumentLabeler()
+    
+    try:
+        document_labeler.run()
+    finally:
+        document_labeler.close()
 

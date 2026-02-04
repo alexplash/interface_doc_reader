@@ -3,11 +3,11 @@
 
 - first, i tried using title extraction with openAI vision to extract titles from each pdf
     - the goal here was to use patching and openai vision on these patch sub sections of the pdf to collect all distinct items in the pdf
-    - i was worried of the efficact at first, so i decided to move on for now
+    - i was worried of the efficacy at first, so i decided to move on for now
 
 - found a repo with john that claims to have a solution for P&ID document feature extraction
     - i spent many hours trying to set up the enviornment, the docker container, and the azure resouces
-    - eventually, i realized that the rpo does not even contain a usable model, only the wrapping infra to use a P&ID trained vision model that must be self-hosted
+    - eventually, i realized that the repo does not even contain a usable model, only the wrapping infra to use a P&ID trained vision model that must be self-hosted
     - basically was a waste of time
 
 - back to openai vision patching, but doing some research on better ways to collect information within each patch of a document before vision is used
@@ -20,3 +20,17 @@
         - keywords: compact, what is this page about
     - Use OCR to fetch all important items from document
         - PaddleOCR: this model also outputs confidence scores, so we can filter by confidence for valid items
+
+- now it is time to implement the document ranking system, based on a user input
+    - first i set up a standard agentic conversation loop, with GPT 5 as the conversation tool
+        - user inputs query, and agent determines query terms and triggers document ranker to fetch relevant documents
+    - document ranker initially used simple search term presense in items from metadata file
+        - this failed to work, as direct string matching is not very practical for the format of data that exists for the ocr items
+        - broken tokens, spacing issues, partial identifiers, etc.
+    - then i tried using a full gpt pass over query terms and document meta data as the document ranking system
+        - gpt was able to very accurately determine relevant documents, but cost and time is an issue
+    - to fix cost and time issues with pure gpt ranker, i added an initial string matching and embedding similarity scan to determine candidate docs to send to gpt
+        - for id-like query terms ("HE-750-140"), i used string-string matching to find documents that contain identical or similar id-like objects
+        - for name/title query terms ("NGL PREHEAT EXCHANGER"), i used embeddings and cosine similarity scoring to find documents that contain similar items
+        - these "candidate" documents are then sent through the previously created gpt ranker
+        - the process is now much faster, cheaper, and possibly even more precise

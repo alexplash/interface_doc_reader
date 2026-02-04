@@ -6,3 +6,5 @@ pillow
 numpy
 PyMuPDF
 paddlepaddle -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+sentence-transformers
+torch
