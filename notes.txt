@@ -34,3 +34,18 @@
         - for name/title query terms ("NGL PREHEAT EXCHANGER"), i used embeddings and cosine similarity scoring to find documents that contain similar items
         - these "candidate" documents are then sent through the previously created gpt ranker
         - the process is now much faster, cheaper, and possibly even more precise
+
+
+- future improvements:
+    - Replace PaddleOCR with a P&ID-specific vision extractor
+        - this will improve the information in metadata.json significantly, allowing for much more accurate scanning in the document ranker
+        - this is especially apparent in the initial embedding and id-match scan, because the current metadata items can lead to potentially relevant documents being ommitted from the candidate pool of documents
+    - add post-ranking agentic tools
+        - as of now, the agent only returns relevant documents
+        - the user should be able to ask questions regarding these documents
+        - using vision model to interpret relevant documents and return answer back to user
+    - handle negation and "not" queries
+        - if the user asks something like "where is {x} not being used", the agent will return back the documents where x is a relevant item
+        - so there should be a query intent classifier that is determined by the rank_documents tool call, as well as the query item selection
+            - this query intent tool with then allow us to tune the way the document ranker selects documents, rather than just naively fetching matches
+    
